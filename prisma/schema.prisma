@@ -1,0 +1,420 @@
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["driverAdapters"]
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum Role {
+  CLIENT
+  EMPLOYEE
+  ADMIN
+}
+
+enum UserStatus {
+  ACTIF
+  SUSPENDU
+}
+
+enum ProjectStatus {
+  ACTIF
+  EN_PAUSE
+  TERMINE
+  ANNULE
+}
+
+enum SprintStatus {
+   A_FAIRE
+    EN_COURS
+  TERMINE
+}
+
+enum TaskStatus {
+    A_FAIRE
+    EN_COURS
+    EN_PAUSE
+    TERMINE
+}
+
+enum TaskPriority {
+  BASSE
+  MOYENNE
+  HAUTE
+  URGENTE
+}
+
+enum NotificationStatus {
+  LUE
+  NON_LUE
+}
+
+enum ConversationType {
+  DIRECT
+  PROJECT
+}
+
+model Utilisateur {
+  id        Int      @id @default(autoincrement())
+  nom       String
+  prenom    String
+  email     String   @unique
+  password  String
+  telephone String?
+  role      Role
+  avatar    String?
+  status    UserStatus @default(ACTIF)
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+
+  // Specializations
+  client   Client?
+  admin    Admin?
+  employee Employee?
+
+  // Relations
+  notifications     Notification[]
+  sentMessages      Message[]
+  conversations     ConversationParticipant[]
+  messageReadStatuses MessageReadStatus[]
+  
+  @@map("utilisateurs")
+}
+
+model Notification {
+  id          Int                @id @default(autoincrement())
+  titre       String
+  description String
+  etat        NotificationStatus @default(NON_LUE)
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
+  
+  utilisateurId Int
+  utilisateur   Utilisateur @relation(fields: [utilisateurId], references: [id], onDelete: Cascade)
+
+  @@map("notifications")
+}
+
+model Client {
+  id            Int     @id @default(autoincrement())
+  nomSociete    String
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  
+  utilisateurId Int     @unique
+  utilisateur   Utilisateur @relation(fields: [utilisateurId], references: [id], onDelete: Cascade)
+  
+  projects      Project[]
+  feedbacks     Feedback[]
+
+  @@map("clients")
+}
+
+model Admin {
+  id            Int     @id @default(autoincrement())
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  
+  utilisateurId Int     @unique
+  utilisateur   Utilisateur @relation(fields: [utilisateurId], references: [id], onDelete: Cascade)
+
+  @@map("admins")
+}
+
+model Employee {
+  id            Int     @id @default(autoincrement())
+  poste         String
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  
+  utilisateurId Int     @unique
+  utilisateur   Utilisateur @relation(fields: [utilisateurId], references: [id], onDelete: Cascade)
+  
+  equipes      Equipe[]
+  assignedSprintTasks SprintTask[]
+  assignedTasks Task[]
+
+  @@map("employees")
+}
+
+model Equipe {
+  id          Int      @id @default(autoincrement())
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  employeeId  Int
+  employee    Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  
+  projectId   Int
+  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@unique([employeeId, projectId])
+  @@map("equipes")
+}
+
+model Feedback {
+  id          Int      @id @default(autoincrement())
+  description String
+  etoiles     Int      @default(5)
+  date        DateTime @default(now())
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  clientId    Int
+  client      Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  
+  projectId   Int
+  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@map("feedbacks")
+}
+
+model Project {
+  id          Int           @id @default(autoincrement())
+  nom         String
+  budget      Float
+  description String
+  dateDebut   DateTime
+  dateFin     DateTime
+  status      ProjectStatus @default(ACTIF)
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  
+  clientId    Int
+  client      Client        @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  
+  // Specializations
+  webProject       WebProject?
+  marketingProject MarketingProject?
+  
+  equipes      Equipe[]
+  feedbacks    Feedback[]
+  conversations Conversation[]
+
+  @@map("projects")
+}
+
+model WebProject {
+  id                Int      @id @default(autoincrement())
+  cahierDesCharges  String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  
+  projectId         Int      @unique
+  project           Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  
+  sprints           Sprint[]
+
+  @@map("web_projects")
+}
+
+model MarketingProject {
+  id        Int      @id @default(autoincrement())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  projectId Int      @unique
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  
+  tasks     Task[]
+
+  @@map("marketing_projects")
+}
+
+model Sprint {
+  id             Int          @id @default(autoincrement())
+  nom            String
+  status         SprintStatus @default(A_FAIRE)
+  goal           String?
+  dateDebut      DateTime
+  dateFin        DateTime
+  velocityPrevue Int          @default(0)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  
+  webProjectId   Int
+  webProject     WebProject   @relation(fields: [webProjectId], references: [id], onDelete: Cascade)
+  
+  tasks          SprintTask[]
+
+  @@map("sprints")
+}
+
+model SprintTask {
+  id          Int        @id @default(autoincrement())
+  titre       String
+  status      TaskStatus @default(A_FAIRE)
+  priority    TaskPriority @default(BASSE)
+  dateFin     DateTime
+  storyPoints Int        @default(0)
+  description String?
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+  
+  sprintId    Int
+  sprint      Sprint     @relation(fields: [sprintId], references: [id], onDelete: Cascade)
+  
+  employeeId  Int?
+  employee    Employee?  @relation(fields: [employeeId], references: [id], onDelete: SetNull)
+  
+  timerTask   TimerTask[]
+  files       File[]
+
+  @@map("sprint_tasks")
+}
+
+model Task {
+  id                 Int           @id @default(autoincrement())
+  titre              String
+  description        String?
+  dateDebut          DateTime      @default(now())
+  dateFin            DateTime
+  status             TaskStatus    @default(A_FAIRE)
+  priority           TaskPriority  @default(BASSE)
+  estimatedHours     Int?
+  tags               String[]
+  blockedByTaskId    Int?
+  blockedByTask      Task?         @relation("TaskBlockedBy", fields: [blockedByTaskId], references: [id])
+  blockingTasks      Task[]        @relation("TaskBlockedBy")
+  createdAt          DateTime      @default(now())
+  updatedAt          DateTime      @updatedAt
+  
+  marketingProjectId Int
+  marketingProject   MarketingProject @relation(fields: [marketingProjectId], references: [id], onDelete: Cascade)
+  
+  employeeId        Int? 
+  employee          Employee?  @relation(fields: [employeeId], references: [id], onDelete: SetNull) 
+  
+  assistantIA        TaskAssistantIA?
+  timerTask          TimerTask[]
+  files              File[]
+  conversations      Conversation[]
+
+  @@map("tasks")
+}
+
+model TaskAssistantIA {
+  id                Int           @id @default(autoincrement())
+  subtasks          String[]
+  estimatedDuration String?
+  suggestedPriority TaskPriority?
+  tips              String[]
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+  
+  taskId            Int           @unique
+  task              Task          @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  @@map("task_assistant_ia")
+}
+
+model TimerTask {
+  id        Int      @id @default(autoincrement())
+  startTime DateTime @default(now())
+  endTime   DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+ 
+  sprintTaskId Int? 
+  sprintTask   SprintTask? @relation(fields: [sprintTaskId], references: [id], onDelete: Cascade)
+  
+  taskId       Int? 
+  task         Task? @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  @@map("timer_tasks")
+}
+
+model File {
+  id     Int    @id @default(autoincrement())
+  name   String
+  url    String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  taskId Int?
+  task   Task?  @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  sprintTaskId Int?
+  sprintTask   SprintTask? @relation(fields: [sprintTaskId], references: [id], onDelete: Cascade)
+
+  @@map("files")
+}
+
+model Conversation {
+  id            Int                      @id @default(autoincrement())
+  type          ConversationType         @default(DIRECT)
+  createdBy     Int
+  lastMessageAt DateTime?
+  taskId        Int?
+  projectId     Int?
+  createdAt     DateTime                 @default(now())
+  updatedAt     DateTime                 @updatedAt
+
+  task          Task?                    @relation(fields: [taskId], references: [id], onDelete: SetNull)
+  project       Project?                 @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  messages      Message[]
+  participants  ConversationParticipant[]
+
+  @@map("conversations")
+}
+
+model Message {
+  id             Int                 @id @default(autoincrement())
+  content        String              @db.Text
+  isEdited       Boolean             @default(false)
+  deletedAt      DateTime?
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
+  replyToId      Int?
+  fileUrl        String?
+  fileType       String?
+  fileName       String?
+
+  senderId       Int
+  sender         Utilisateur         @relation(fields: [senderId], references: [id], onDelete: Cascade)
+
+  conversationId Int
+  conversation   Conversation        @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  replyTo        Message?            @relation("MessageReplies", fields: [replyToId], references: [id])
+  replies        Message[]           @relation("MessageReplies")
+  readStatuses   MessageReadStatus[]
+
+  @@map("messages")
+}
+
+model ConversationParticipant {
+  id             Int          @id @default(autoincrement())
+  lastReadAt     DateTime?
+  isActive       Boolean      @default(true)
+  joinedAt       DateTime     @default(now())
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  utilisateurId  Int
+  utilisateur    Utilisateur  @relation(fields: [utilisateurId], references: [id], onDelete: Cascade)
+
+  conversationId Int
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@unique([utilisateurId, conversationId])
+  @@map("conversation_participants")
+}
+
+model MessageReadStatus {
+  id        Int         @id @default(autoincrement())
+  readAt    DateTime    @default(now())
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+
+  messageId Int
+  message   Message     @relation(fields: [messageId], references: [id], onDelete: Cascade)
+
+  userId    Int
+  user      Utilisateur @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([messageId, userId])
+  @@map("message_read_statuses")
+}
