@@ -7,6 +7,366 @@ datasource db {
   provider = "postgresql"
 }
 
+model Utilisateur {
+  id                  Int                       @id @default(autoincrement())
+  nom                 String
+  prenom              String
+  email               String                    @unique
+  password            String
+  telephone           String?
+  role                Role
+  avatar              String?
+  preferences         Json?
+  createdAt           DateTime                  @default(now())
+  status              UserStatus                @default(ACTIF)
+  updatedAt           DateTime                  @updatedAt
+  admin               Admin?
+  client              Client?
+  conversations       ConversationParticipant[]
+  employee            Employee?
+  messageReadStatuses MessageReadStatus[]
+  sentMessages        Message[]
+  notifications       Notification[]
+  refreshTokens       RefreshToken[]
+
+  @@index([email])
+  @@map("utilisateurs")
+}
+
+model RefreshToken {
+  id          Int         @id @default(autoincrement())
+  tokenHash   String      @unique
+  utilisateurId Int
+  expiresAt   DateTime
+  createdAt   DateTime    @default(now())
+  utilisateur Utilisateur @relation(fields: [utilisateurId], references: [id], onDelete: Cascade)
+
+  @@index([utilisateurId])
+  @@map("refresh_tokens")
+}
+
+model Notification {
+  id                Int                @id @default(autoincrement())
+  titre             String
+  description       String
+  etat              NotificationStatus @default(NON_LUE)
+  utilisateurId     Int
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+  relatedEntityId   Int?
+  relatedEntityType String?
+  additionalEntityId Int?
+  type              NotificationType
+  utilisateur       Utilisateur        @relation(fields: [utilisateurId], references: [id], onDelete: Cascade)
+
+  @@index([utilisateurId])
+  @@index([utilisateurId, etat])
+  @@map("notifications")
+}
+
+model Client {
+  id            Int         @id @default(autoincrement())
+  nomSociete    String
+  utilisateurId Int         @unique
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+  utilisateur   Utilisateur @relation(fields: [utilisateurId], references: [id], onDelete: Cascade)
+  feedbacks     Feedback[]
+  projects      Project[]
+
+  @@map("clients")
+}
+
+model Admin {
+  id            Int         @id @default(autoincrement())
+  utilisateurId Int         @unique
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+  utilisateur   Utilisateur @relation(fields: [utilisateurId], references: [id], onDelete: Cascade)
+
+  @@map("admins")
+}
+
+model Employee {
+  id                  Int          @id @default(autoincrement())
+  poste               String
+  utilisateurId       Int          @unique
+  createdAt           DateTime     @default(now())
+  updatedAt           DateTime     @updatedAt
+  utilisateur         Utilisateur  @relation(fields: [utilisateurId], references: [id], onDelete: Cascade)
+  equipes             Equipe[]
+  assignedSprintTasks SprintTask[]
+  assignedTasks       Task[]
+
+  @@map("employees")
+}
+
+model Equipe {
+  id         Int      @id @default(autoincrement())
+  projectId  Int
+  employeeId Int
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  employee   Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  project    Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@unique([employeeId, projectId])
+  @@map("equipes")
+}
+
+model Feedback {
+  id                   Int            @id @default(autoincrement())
+  content              String
+  taskTitle            String?
+  sentiment            String?
+  category             String?
+  score                Int?
+  status               FeedbackStatus @default(EN_ATTENTE)
+  createdAt            DateTime       @default(now())
+  updatedAt            DateTime       @updatedAt
+  taskId               Int? 
+  feedbackRequestedAt  DateTime? 
+  taskPriority         String?
+  
+  clientId    Int
+  client      Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  
+  projectId   Int
+  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  task        Task?    @relation(fields: [taskId], references: [id], onDelete: SetNull)
+
+  @@index([clientId])
+  @@index([taskId])
+  @@index([status])
+  @@map("feedbacks")
+}
+
+model Project {
+  id               Int               @id @default(autoincrement())
+  nom              String
+  budget           Float
+  description      String
+  dateDebut        DateTime
+  dateFin          DateTime
+  status           ProjectStatus     @default(ACTIF)
+  clientId         Int
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  conversations    Conversation[]
+  equipes          Equipe[]
+  feedbacks        Feedback[]
+  marketingProject MarketingProject?
+  client           Client            @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  webProject       WebProject?
+
+  @@map("projects")
+}
+
+model WebProject {
+  id               Int      @id @default(autoincrement())
+  cahierDesCharges String?
+  projectId        Int      @unique
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+  sprints          Sprint[]
+  project          Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@map("web_projects")
+}
+
+model MarketingProject {
+  id        Int      @id @default(autoincrement())
+  projectId Int      @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  tasks     Task[]
+
+  @@map("marketing_projects")
+}
+
+model Sprint {
+  id             Int          @id @default(autoincrement())
+  nom            String
+  status         SprintStatus @default(A_FAIRE)
+  goal           String?
+  dateDebut      DateTime
+  dateFin        DateTime
+  velocityPrevue Int          @default(0)
+  webProjectId   Int
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  tasks          SprintTask[]
+  webProject     WebProject   @relation(fields: [webProjectId], references: [id], onDelete: Cascade)
+
+  @@map("sprints")
+}
+
+model SprintTask {
+  id          Int          @id @default(autoincrement())
+  titre       String
+  status      TaskStatus   @default(A_FAIRE)
+  dateFin     DateTime
+  storyPoints Int          @default(0)
+  description String?
+  sprintId    Int
+  employeeId  Int?
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  priority    TaskPriority @default(BASSE)
+  files       File[]
+  employee    Employee?    @relation(fields: [employeeId], references: [id])
+  sprint      Sprint       @relation(fields: [sprintId], references: [id], onDelete: Cascade)
+  timerTask   TimerTask[]
+
+  @@index([employeeId])
+  @@index([sprintId])
+  @@map("sprint_tasks")
+}
+
+model Task {
+  id                 Int              @id @default(autoincrement())
+  titre              String
+  dateDebut          DateTime         @default(now())
+  dateFin            DateTime
+  status             TaskStatus       @default(A_FAIRE)
+  marketingProjectId Int
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+  employeeId         Int?
+  blockedByTaskId    Int?
+  description        String?
+  estimatedHours     Int?
+  priority           TaskPriority     @default(BASSE)
+  tags               String[]
+  conversations      Conversation[]
+  files              File[]
+  assistantIA        TaskAssistantIA?
+  feedbackRequests   Feedback[]
+  blockedByTask      Task?            @relation("TaskBlockedBy", fields: [blockedByTaskId], references: [id])
+  blockingTasks      Task[]           @relation("TaskBlockedBy")
+  employee           Employee?        @relation(fields: [employeeId], references: [id])
+  marketingProject   MarketingProject @relation(fields: [marketingProjectId], references: [id], onDelete: Cascade)
+  timerTask          TimerTask[]
+
+  @@index([employeeId])
+  @@index([marketingProjectId])
+  @@index([dateFin])
+  @@map("tasks")
+}
+
+model TaskAssistantIA {
+  id                Int           @id @default(autoincrement())
+  taskId            Int           @unique
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+  estimatedDuration String?
+  subtasks          String[]
+  suggestedPriority TaskPriority?
+  tips              String[]
+  task              Task          @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  @@map("task_assistant_ia")
+}
+
+model TimerTask {
+  id           Int         @id @default(autoincrement())
+  startTime    DateTime    @default(now()) @db.Timestamptz(6)
+  endTime      DateTime?   @db.Timestamptz(6)
+  sprintTaskId Int?
+  taskId       Int?
+  createdAt    DateTime    @default(now()) @db.Timestamptz(6)
+  updatedAt    DateTime    @updatedAt @db.Timestamptz(6)
+  sprintTask   SprintTask? @relation(fields: [sprintTaskId], references: [id], onDelete: Cascade)
+  task         Task?       @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  @@map("timer_tasks")
+}
+
+model File {
+  id           Int         @id @default(autoincrement())
+  name         String
+  url          String
+  taskId       Int?
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+  sprintTaskId Int?
+  sprintTask   SprintTask? @relation(fields: [sprintTaskId], references: [id], onDelete: Cascade)
+  task         Task?       @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  @@map("files")
+}
+
+model Conversation {
+  id            Int                       @id @default(autoincrement())
+  createdAt     DateTime                  @default(now())
+  createdBy     Int
+  lastMessageAt DateTime?
+  taskId        Int?
+  projectId     Int?
+  type          ConversationType          @default(DIRECT)
+  updatedAt     DateTime                  @updatedAt
+  participants  ConversationParticipant[]
+  project       Project?                  @relation(fields: [projectId], references: [id])
+  task          Task?                     @relation(fields: [taskId], references: [id])
+  messages      Message[]
+
+  @@map("conversations")
+}
+
+model Message {
+  id             Int                 @id @default(autoincrement())
+  content        String
+  senderId       Int
+  conversationId Int
+  createdAt      DateTime            @default(now())
+  deletedAt      DateTime?
+  isEdited       Boolean             @default(false)
+  replyToId      Int?
+  updatedAt      DateTime            @updatedAt
+  fileName       String?
+  fileType       String?
+  fileUrl        String?
+  readStatuses   MessageReadStatus[]
+  conversation   Conversation        @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  replyTo        Message?            @relation("MessageReplies", fields: [replyToId], references: [id])
+  replies        Message[]           @relation("MessageReplies")
+  sender         Utilisateur         @relation(fields: [senderId], references: [id], onDelete: Cascade)
+
+  @@map("messages")
+}
+
+model ConversationParticipant {
+  id             Int          @id @default(autoincrement())
+  utilisateurId  Int
+  conversationId Int
+  isActive       Boolean      @default(true)
+  joinedAt       DateTime     @default(now())
+  lastReadAt     DateTime?
+  updatedAt      DateTime     @updatedAt
+  createdAt      DateTime     @default(now())
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  utilisateur    Utilisateur  @relation(fields: [utilisateurId], references: [id], onDelete: Cascade)
+
+  @@unique([utilisateurId, conversationId])
+  @@map("conversation_participants")
+}
+
+model MessageReadStatus {
+  id        Int         @id @default(autoincrement())
+  readAt    DateTime    @default(now())
+  messageId Int
+  userId    Int
+  updatedAt DateTime    @updatedAt
+  createdAt DateTime    @default(now())
+  message   Message     @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  user      Utilisateur @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([messageId, userId])
+  @@map("message_read_statuses")
+}
+
 enum Role {
   CLIENT
   EMPLOYEE
@@ -26,16 +386,22 @@ enum ProjectStatus {
 }
 
 enum SprintStatus {
-   A_FAIRE
-    EN_COURS
+  A_FAIRE
+  EN_COURS
   TERMINE
 }
 
+enum FeedbackStatus {
+  EN_ATTENTE
+  EN_COURS
+  RESOLU
+}
+
 enum TaskStatus {
-    A_FAIRE
-    EN_COURS
-    EN_PAUSE
-    TERMINE
+  A_FAIRE
+  EN_COURS
+  TERMINE
+  EN_PAUSE
 }
 
 enum TaskPriority {
@@ -55,366 +421,24 @@ enum ConversationType {
   PROJECT
 }
 
-model Utilisateur {
-  id        Int      @id @default(autoincrement())
-  nom       String
-  prenom    String
-  email     String   @unique
-  password  String
-  telephone String?
-  role      Role
-  avatar    String?
-  status    UserStatus @default(ACTIF)
-  createdAt DateTime   @default(now())
-  updatedAt DateTime   @updatedAt
-
-  // Specializations
-  client   Client?
-  admin    Admin?
-  employee Employee?
-
-  // Relations
-  notifications     Notification[]
-  sentMessages      Message[]
-  conversations     ConversationParticipant[]
-  messageReadStatuses MessageReadStatus[]
-  
-  @@map("utilisateurs")
-}
-
-model Notification {
-  id          Int                @id @default(autoincrement())
-  titre       String
-  description String
-  etat        NotificationStatus @default(NON_LUE)
-  createdAt   DateTime           @default(now())
-  updatedAt   DateTime           @updatedAt
-  
-  utilisateurId Int
-  utilisateur   Utilisateur @relation(fields: [utilisateurId], references: [id], onDelete: Cascade)
-
-  @@map("notifications")
-}
-
-model Client {
-  id            Int     @id @default(autoincrement())
-  nomSociete    String
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-  
-  utilisateurId Int     @unique
-  utilisateur   Utilisateur @relation(fields: [utilisateurId], references: [id], onDelete: Cascade)
-  
-  projects      Project[]
-  feedbacks     Feedback[]
-
-  @@map("clients")
-}
-
-model Admin {
-  id            Int     @id @default(autoincrement())
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-  
-  utilisateurId Int     @unique
-  utilisateur   Utilisateur @relation(fields: [utilisateurId], references: [id], onDelete: Cascade)
-
-  @@map("admins")
-}
-
-model Employee {
-  id            Int     @id @default(autoincrement())
-  poste         String
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-  
-  utilisateurId Int     @unique
-  utilisateur   Utilisateur @relation(fields: [utilisateurId], references: [id], onDelete: Cascade)
-  
-  equipes      Equipe[]
-  assignedSprintTasks SprintTask[]
-  assignedTasks Task[]
-
-  @@map("employees")
-}
-
-model Equipe {
-  id          Int      @id @default(autoincrement())
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  
-  employeeId  Int
-  employee    Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
-  
-  projectId   Int
-  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
-
-  @@unique([employeeId, projectId])
-  @@map("equipes")
-}
-
-model Feedback {
-  id          Int      @id @default(autoincrement())
-  description String
-  etoiles     Int      @default(5)
-  date        DateTime @default(now())
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  
-  clientId    Int
-  client      Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  
-  projectId   Int
-  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
-
-  @@map("feedbacks")
-}
-
-model Project {
-  id          Int           @id @default(autoincrement())
-  nom         String
-  budget      Float
-  description String
-  dateDebut   DateTime
-  dateFin     DateTime
-  status      ProjectStatus @default(ACTIF)
-  createdAt   DateTime      @default(now())
-  updatedAt   DateTime      @updatedAt
-  
-  clientId    Int
-  client      Client        @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  
-  // Specializations
-  webProject       WebProject?
-  marketingProject MarketingProject?
-  
-  equipes      Equipe[]
-  feedbacks    Feedback[]
-  conversations Conversation[]
-
-  @@map("projects")
-}
-
-model WebProject {
-  id                Int      @id @default(autoincrement())
-  cahierDesCharges  String?
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
-  
-  projectId         Int      @unique
-  project           Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  
-  sprints           Sprint[]
-
-  @@map("web_projects")
-}
-
-model MarketingProject {
-  id        Int      @id @default(autoincrement())
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  
-  projectId Int      @unique
-  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  
-  tasks     Task[]
-
-  @@map("marketing_projects")
-}
-
-model Sprint {
-  id             Int          @id @default(autoincrement())
-  nom            String
-  status         SprintStatus @default(A_FAIRE)
-  goal           String?
-  dateDebut      DateTime
-  dateFin        DateTime
-  velocityPrevue Int          @default(0)
-  createdAt      DateTime     @default(now())
-  updatedAt      DateTime     @updatedAt
-  
-  webProjectId   Int
-  webProject     WebProject   @relation(fields: [webProjectId], references: [id], onDelete: Cascade)
-  
-  tasks          SprintTask[]
-
-  @@map("sprints")
-}
-
-model SprintTask {
-  id          Int        @id @default(autoincrement())
-  titre       String
-  status      TaskStatus @default(A_FAIRE)
-  priority    TaskPriority @default(BASSE)
-  dateFin     DateTime
-  storyPoints Int        @default(0)
-  description String?
-  createdAt   DateTime   @default(now())
-  updatedAt   DateTime   @updatedAt
-  
-  sprintId    Int
-  sprint      Sprint     @relation(fields: [sprintId], references: [id], onDelete: Cascade)
-  
-  employeeId  Int?
-  employee    Employee?  @relation(fields: [employeeId], references: [id], onDelete: SetNull)
-  
-  timerTask   TimerTask[]
-  files       File[]
-
-  @@map("sprint_tasks")
-}
-
-model Task {
-  id                 Int           @id @default(autoincrement())
-  titre              String
-  description        String?
-  dateDebut          DateTime      @default(now())
-  dateFin            DateTime
-  status             TaskStatus    @default(A_FAIRE)
-  priority           TaskPriority  @default(BASSE)
-  estimatedHours     Int?
-  tags               String[]
-  blockedByTaskId    Int?
-  blockedByTask      Task?         @relation("TaskBlockedBy", fields: [blockedByTaskId], references: [id])
-  blockingTasks      Task[]        @relation("TaskBlockedBy")
-  createdAt          DateTime      @default(now())
-  updatedAt          DateTime      @updatedAt
-  
-  marketingProjectId Int
-  marketingProject   MarketingProject @relation(fields: [marketingProjectId], references: [id], onDelete: Cascade)
-  
-  employeeId        Int? 
-  employee          Employee?  @relation(fields: [employeeId], references: [id], onDelete: SetNull) 
-  
-  assistantIA        TaskAssistantIA?
-  timerTask          TimerTask[]
-  files              File[]
-  conversations      Conversation[]
-
-  @@map("tasks")
-}
-
-model TaskAssistantIA {
-  id                Int           @id @default(autoincrement())
-  subtasks          String[]
-  estimatedDuration String?
-  suggestedPriority TaskPriority?
-  tips              String[]
-  createdAt         DateTime      @default(now())
-  updatedAt         DateTime      @updatedAt
-  
-  taskId            Int           @unique
-  task              Task          @relation(fields: [taskId], references: [id], onDelete: Cascade)
-
-  @@map("task_assistant_ia")
-}
-
-model TimerTask {
-  id        Int      @id @default(autoincrement())
-  startTime DateTime @default(now())
-  endTime   DateTime?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  
- 
-  sprintTaskId Int? 
-  sprintTask   SprintTask? @relation(fields: [sprintTaskId], references: [id], onDelete: Cascade)
-  
-  taskId       Int? 
-  task         Task? @relation(fields: [taskId], references: [id], onDelete: Cascade)
-
-  @@map("timer_tasks")
-}
-
-model File {
-  id     Int    @id @default(autoincrement())
-  name   String
-  url    String
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  
-  taskId Int?
-  task   Task?  @relation(fields: [taskId], references: [id], onDelete: Cascade)
-
-  sprintTaskId Int?
-  sprintTask   SprintTask? @relation(fields: [sprintTaskId], references: [id], onDelete: Cascade)
-
-  @@map("files")
-}
-
-model Conversation {
-  id            Int                      @id @default(autoincrement())
-  type          ConversationType         @default(DIRECT)
-  createdBy     Int
-  lastMessageAt DateTime?
-  taskId        Int?
-  projectId     Int?
-  createdAt     DateTime                 @default(now())
-  updatedAt     DateTime                 @updatedAt
-
-  task          Task?                    @relation(fields: [taskId], references: [id], onDelete: SetNull)
-  project       Project?                 @relation(fields: [projectId], references: [id], onDelete: SetNull)
-  messages      Message[]
-  participants  ConversationParticipant[]
-
-  @@map("conversations")
-}
-
-model Message {
-  id             Int                 @id @default(autoincrement())
-  content        String              @db.Text
-  isEdited       Boolean             @default(false)
-  deletedAt      DateTime?
-  createdAt      DateTime            @default(now())
-  updatedAt      DateTime            @updatedAt
-  replyToId      Int?
-  fileUrl        String?
-  fileType       String?
-  fileName       String?
-
-  senderId       Int
-  sender         Utilisateur         @relation(fields: [senderId], references: [id], onDelete: Cascade)
-
-  conversationId Int
-  conversation   Conversation        @relation(fields: [conversationId], references: [id], onDelete: Cascade)
-
-  replyTo        Message?            @relation("MessageReplies", fields: [replyToId], references: [id])
-  replies        Message[]           @relation("MessageReplies")
-  readStatuses   MessageReadStatus[]
-
-  @@map("messages")
-}
-
-model ConversationParticipant {
-  id             Int          @id @default(autoincrement())
-  lastReadAt     DateTime?
-  isActive       Boolean      @default(true)
-  joinedAt       DateTime     @default(now())
-  createdAt      DateTime     @default(now())
-  updatedAt      DateTime     @updatedAt
-
-  utilisateurId  Int
-  utilisateur    Utilisateur  @relation(fields: [utilisateurId], references: [id], onDelete: Cascade)
-
-  conversationId Int
-  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
-
-  @@unique([utilisateurId, conversationId])
-  @@map("conversation_participants")
-}
-
-model MessageReadStatus {
-  id        Int         @id @default(autoincrement())
-  readAt    DateTime    @default(now())
-  createdAt DateTime    @default(now())
-  updatedAt DateTime    @updatedAt
-
-  messageId Int
-  message   Message     @relation(fields: [messageId], references: [id], onDelete: Cascade)
-
-  userId    Int
-  user      Utilisateur @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@unique([messageId, userId])
-  @@map("message_read_statuses")
+enum NotificationType {
+  TASK_ASSIGNED
+  TASK_OVERDUE
+  TASK_DEADLINE_TODAY
+  TASK_FILE_ATTACHED
+  TASK_AI_COMPLETE
+  PROJECT_ASSIGNED
+  PROJECT_STATUS_CHANGED
+  PROJECT_MEMBER_ADDED
+  PROJECT_CDC_UPLOADED
+  PROJECT_AI_SPRINTS
+  SPRINT_CREATED
+  SPRINT_COMPLETED
+  SPRINT_TASK_ASSIGNED
+  PROJECT_AUTOCOMPLETED
+  ACCOUNT_REACTIVATED
+  PROFILE_UPDATED_BY_ADMIN
+  FEEDBACK_REQUESTED
+  FEEDBACK_STATUS_UPDATED
+  TASK_COMPLETED_CLIENT
 }

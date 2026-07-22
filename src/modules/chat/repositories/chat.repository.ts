@@ -88,6 +88,46 @@ export class ChatRepository {
 
     if (projectIds.length === 0) return [];
 
+    // Auto-create missing PROJECT conversations for any project that doesn't have one yet
+    // (handles projects created before conversation auto-creation was added)
+    const existingConversations = await this.prisma.conversation.findMany({
+      where: { type: ConversationType.PROJECT, projectId: { in: projectIds } },
+      select: { projectId: true },
+    });
+    const existingProjectIds = new Set(existingConversations.map((c) => c.projectId));
+    const missingProjectIds = projectIds.filter((id) => !existingProjectIds.has(id));
+
+    if (missingProjectIds.length > 0) {
+      for (const projectId of missingProjectIds) {
+        const project = await this.prisma.project.findUnique({
+          where: { id: projectId },
+          include: {
+            client: { select: { utilisateurId: true } },
+            equipes: { include: { employee: { select: { utilisateurId: true } } } },
+          },
+        });
+        if (!project) continue;
+
+        const participantUserIds = [
+          ...new Set([
+            project.client?.utilisateurId,
+            ...project.equipes.map((e) => e.employee.utilisateurId),
+          ].filter((id): id is number => id != null)),
+        ];
+
+        await this.prisma.conversation.create({
+          data: {
+            type: ConversationType.PROJECT,
+            projectId,
+            createdBy: userId,
+            participants: {
+              create: participantUserIds.map((uid) => ({ utilisateurId: uid })),
+            },
+          },
+        });
+      }
+    }
+
     return this.prisma.conversation.findMany({
       where: {
         type: ConversationType.PROJECT,

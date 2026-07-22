@@ -3,19 +3,25 @@ import {
   ConflictException,
   BadRequestException,
   NotFoundException,
+  UnauthorizedException,
 } from '@nestjs/common';
 import { UsersRepository } from '../repositories/users.repository';
 import { CreateUserDto } from '../dto/create-user.dto';
 import * as bcrypt from 'bcrypt';
-import { Role } from '@prisma/client';
+import { Role, UserStatus, Prisma } from '@prisma/client';
 import { generatePassword } from 'src/common/utils/random.utils';
 import { MailService } from '../../mail/services/mail.service';
+import { NotificationsGateway } from '../../notifications/notifications.gateway';
+import { NotificationsService } from '../../notifications/notifications.service';
+import { NotificationType } from '@prisma/client';
 
 @Injectable()
 export class UsersService {
   constructor(
     private usersRepository: UsersRepository,
     private mailService: MailService,
+    private notificationsGateway: NotificationsGateway,
+    private notificationsService: NotificationsService,
   ) {}
 
   async create(createUserDto: CreateUserDto) {
@@ -38,7 +44,7 @@ export class UsersService {
       password: hashedPassword,
       telephone,
       role,
-      status: 'ACTIF' as any,
+      status: UserStatus.ACTIF,
     };
 
     switch (role) {
@@ -93,16 +99,14 @@ export class UsersService {
     return { message: 'Utilisateur supprimé avec succès' };
   }
 
-  async update(id: number, updateUserDto: any) {
+  async update(id: number, updateUserDto: Record<string, any>, callerRole?: string) {
     const user = await this.usersRepository.findById(id);
     if (!user) {
       throw new NotFoundException(`Utilisateur avec ID ${id} introuvable`);
     }
 
     const { nomSociete, poste, ...userData } = updateUserDto;
-
-    // Préparer les données de relations selon le rôle
-    const updateData: any = { ...userData };
+    const updateData: Record<string, any> = { ...userData };
 
     if (user.role === Role.CLIENT && nomSociete) {
       updateData.client = { nomSociete };
@@ -110,7 +114,19 @@ export class UsersService {
       updateData.employee = { poste };
     }
 
-    return this.usersRepository.update(id, updateData);
+    const result = await this.usersRepository.update(id, updateData);
+
+    // Notify user if updated by an admin
+    if (callerRole === 'ADMIN') {
+      this.notificationsService.createNotification(
+        id,
+        NotificationType.PROFILE_UPDATED_BY_ADMIN,
+        'Profil mis à jour',
+        'Un administrateur a mis à jour votre profil.',
+      ).catch(() => {});
+    }
+
+    return result;
   }
 
   async updateAvatar(id: number, avatarPath: string) {
@@ -123,13 +139,27 @@ export class UsersService {
   }
 
   async toggleStatus(id: number) {
-    const user: any = await this.usersRepository.findById(id);
+    const user = await this.usersRepository.findById(id);
     if (!user) {
       throw new NotFoundException(`Utilisateur avec ID ${id} introuvable`);
     }
 
     const newStatus = user.status === 'ACTIF' ? 'SUSPENDU' : 'ACTIF';
-    return this.usersRepository.update(id, { status: newStatus });
+    const updated = await this.usersRepository.update(id, { status: newStatus });
+
+    if (newStatus === 'SUSPENDU') {
+      this.notificationsGateway.forceLogout(id);
+    } else {
+      // Account reactivated — notify the user
+      this.notificationsService.createNotification(
+        id,
+        NotificationType.ACCOUNT_REACTIVATED,
+        'Compte réactivé',
+        'Votre compte a été réactivé par un administrateur.',
+      ).catch(() => {});
+    }
+
+    return updated;
   }
 
   async getAdminKPIs() {
@@ -144,7 +174,7 @@ export class UsersService {
   ) {
     const skip = (page - 1) * limit;
 
-    const where: any = {};
+    const where: Prisma.UtilisateurWhereInput = {};
 
     // Search logic
     if (search) {
@@ -182,7 +212,7 @@ export class UsersService {
       this.usersRepository.count(where),
     ]);
 
-    const transformedUsers = users.map((user: any) => {
+    const transformedUsers = users.map((user) => {
       let poste: string = user.role;
       let projectsCount = 0;
 
@@ -222,7 +252,7 @@ export class UsersService {
   }
 
   async findById(id: number) {
-    const user: any = await this.usersRepository.findById(id);
+    const user = await this.usersRepository.findById(id);
     if (!user) {
       throw new NotFoundException(`Utilisateur avec ID ${id} introuvable`);
     }
@@ -246,9 +276,36 @@ export class UsersService {
       role: user.role,
       joinedAt: user.createdAt,
       status: user.status === "ACTIF" ? "Actif" : "Suspendu",
-      position: poste, // For legacy or general use
-      poste, // Current field name in some parts
+      position: poste,
+      poste,
       nomSociete,
+      preferences: user.preferences ?? null,
     };
+  }
+
+  async changePassword(id: number, currentPassword: string, newPassword: string, confirmPassword: string) {
+    if (newPassword !== confirmPassword) {
+      throw new BadRequestException('Les mots de passe ne correspondent pas');
+    }
+    const user = await this.usersRepository.findById(id);
+    if (!user) throw new NotFoundException('Utilisateur introuvable');
+
+    const currentHash = await this.usersRepository.findPasswordById(id);
+    const valid = await bcrypt.compare(currentPassword, currentHash ?? '');
+    if (!valid) throw new UnauthorizedException('Mot de passe actuel incorrect');
+
+    const hashed = await bcrypt.hash(newPassword, 10);
+    await this.usersRepository.updatePassword(id, hashed);
+    return { message: 'Mot de passe mis à jour avec succès' };
+  }
+
+  async updatePreferences(id: number, preferences: Record<string, any>) {
+    await this.usersRepository.updatePreferences(id, preferences);
+    return { message: 'Préférences enregistrées' };
+  }
+
+  async deleteMe(id: number) {
+    await this.usersRepository.delete(id);
+    return { message: 'Compte supprimé' };
   }
 }

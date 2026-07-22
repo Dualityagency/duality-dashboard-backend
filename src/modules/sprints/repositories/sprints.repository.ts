@@ -13,6 +13,19 @@ export class SprintsRepository {
     return this.prisma.sprint.findUnique({
       where: { id },
       include: {
+        webProject: {
+          include: {
+            project: {
+              include: {
+                client: {
+                  include: {
+                    utilisateur: true
+                  }
+                }
+              }
+            }
+          }
+        },
         tasks: {
           include: {
             employee: {
@@ -223,5 +236,104 @@ export class SprintsRepository {
         data: { status: newProjectStatus as any }
       });
     }
+  }
+
+  // ── Notification helpers ───────────────────────────────────────────────────
+
+  async getWebProjectTeamUtilisateurIds(webProjectId: number): Promise<number[]> {
+    const webProject = await this.prisma.webProject.findUnique({
+      where: { id: webProjectId },
+      select: { projectId: true },
+    });
+    if (!webProject) return [];
+    const equipes = await this.prisma.equipe.findMany({
+      where: { projectId: webProject.projectId },
+      include: { employee: { select: { utilisateurId: true } } },
+    });
+    return equipes.map((e) => e.employee.utilisateurId);
+  }
+
+  async getProjectNameByWebProjectId(webProjectId: number): Promise<string> {
+    const webProject = await this.prisma.webProject.findUnique({
+      where: { id: webProjectId },
+      include: { project: { select: { nom: true } } },
+    });
+    return webProject?.project?.nom ?? '';
+  }
+
+  async getProjectIdByWebProjectId(webProjectId: number): Promise<number | null> {
+    const webProject = await this.prisma.webProject.findUnique({
+      where: { id: webProjectId },
+      select: { projectId: true },
+    });
+    return webProject?.projectId ?? null;
+  }
+
+  /**
+   * Returns true if the task's update caused the parent project to become TERMINE.
+   * Must be called AFTER updateTask has already run.
+   */
+  async wasProjectJustAutocompleted(taskId: number): Promise<boolean> {
+    const task = await this.prisma.sprintTask.findUnique({
+      where: { id: taskId },
+      select: {
+        status: true,
+        sprint: {
+          include: {
+            webProject: {
+              include: {
+                project: { select: { status: true } },
+                sprints: { include: { tasks: { select: { status: true } } } },
+              },
+            },
+          },
+        },
+      },
+    });
+
+    if (!task || task.status !== 'TERMINE') return false;
+    return task.sprint?.webProject?.project?.status === 'TERMINE';
+  }
+
+  async getProjectCompletionContext(taskId: number): Promise<{
+    projectId: number;
+    projectName: string;
+    teamUserIds: number[];
+    adminUserIds: number[];
+  }> {
+    const task = await this.prisma.sprintTask.findUnique({
+      where: { id: taskId },
+      select: {
+        sprint: {
+          include: {
+            webProject: {
+              include: {
+                project: {
+                  include: {
+                    equipes: { include: { employee: { select: { utilisateurId: true } } } },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    });
+
+    const project = task?.sprint?.webProject?.project;
+    if (!project) return { projectId: 0, projectName: '', teamUserIds: [], adminUserIds: [] };
+
+    const teamUserIds = project.equipes.map((e) => e.employee.utilisateurId);
+    const admins = await this.prisma.utilisateur.findMany({
+      where: { role: 'ADMIN' },
+      select: { id: true },
+    });
+
+    return {
+      projectId: project.id,
+      projectName: project.nom,
+      teamUserIds,
+      adminUserIds: admins.map((a) => a.id),
+    };
   }
 }

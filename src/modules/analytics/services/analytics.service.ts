@@ -8,4 +8,8 @@ export class AnalyticsService {
   async getPageAnalyseStats(year: number, month: number) {
     return this.analyticsRepository.getPageAnalyseStats(year, month);
   }
+
+  async getEmployeeAnalyticsStats(userId: number, year?: number, month?: number) {
+    return this.analyticsRepository.getEmployeeAnalyticsStats(userId, year, month);
+  }
 }

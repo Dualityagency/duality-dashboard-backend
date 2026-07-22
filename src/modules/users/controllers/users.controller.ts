@@ -19,6 +19,8 @@ import { extname } from 'path';
 import { UsersService } from '../services/users.service';
 import { CreateUserDto } from '../dto/create-user.dto';
 import { UpdateUserDto } from '../dto/update-user.dto';
+import { ChangePasswordDto } from '../dto/change-password.dto';
+import { UpdatePreferencesDto } from '../dto/update-preferences.dto';
 import { Role } from '@prisma/client';
 import { Roles } from '../../../common/decorators/roles.decorator';
 import { JwtAuthGuard } from '../../../common/guards/jwt-auth.guard';
@@ -39,6 +41,24 @@ export class UsersController {
   @UseGuards(JwtAuthGuard)
   async updateProfile(@GetUser('id') id: number, @Body() updateUserDto: UpdateUserDto) {
     return this.usersService.update(id, updateUserDto);
+  }
+
+  @Patch('me/password')
+  @UseGuards(JwtAuthGuard)
+  async changePassword(@GetUser('id') id: number, @Body() dto: ChangePasswordDto) {
+    return this.usersService.changePassword(id, dto.currentPassword, dto.newPassword, dto.confirmPassword);
+  }
+
+  @Patch('me/preferences')
+  @UseGuards(JwtAuthGuard)
+  async updatePreferences(@GetUser('id') id: number, @Body() dto: UpdatePreferencesDto) {
+    return this.usersService.updatePreferences(id, dto.preferences);
+  }
+
+  @Delete('me')
+  @UseGuards(JwtAuthGuard)
+  async deleteMe(@GetUser('id') id: number) {
+    return this.usersService.deleteMe(id);
   }
 
   @Post()
@@ -87,8 +107,9 @@ export class UsersController {
   async update(
     @Param('id', ParseIntPipe) id: number,
     @Body() updateUserDto: UpdateUserDto,
+    @GetUser('role') callerRole: string,
   ) {
-    return this.usersService.update(id, updateUserDto);
+    return this.usersService.update(id, updateUserDto, callerRole);
   }
 
   @Post(':id/avatar')

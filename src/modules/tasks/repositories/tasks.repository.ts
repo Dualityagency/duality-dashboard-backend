@@ -6,8 +6,15 @@ import { UpdateTaskDto } from '../dto/update-task.dto';
 import { TASK_DETAIL_INCLUDE, TASK_LIST_INCLUDE, SPRINT_TASK_DETAIL_INCLUDE } from '../constants/task.constants';
 import { UpdateSprintTaskDto } from '../dto/update-sprint-task.dto';
 import { CreateSprintTaskDto } from '../dto/create-sprint-task.dto';
-import { TaskPriority } from '@prisma/client';
+import { TaskPriority, TaskStatus, FeedbackStatus } from '@prisma/client';
 
+export interface TaskTimeStats {
+  totalEstimatedHours: number;
+  totalActualSeconds: number;
+  tasksCompleted: number;
+  tasksInProgress: number;
+  tasksToDo: number;
+}
 
 @Injectable()
 export class TasksRepository {
@@ -19,6 +26,64 @@ export class TasksRepository {
       select: { role: true },
     });
     return user?.role ?? null;
+  }
+
+  async getTaskWithProject(taskId: number) {
+    return this.prisma.task.findUnique({
+      where: { id: taskId },
+      include: {
+        marketingProject: {
+          include: { project: { include: { client: true } } },
+        },
+        feedbackRequests: {
+          where: { status: FeedbackStatus.EN_ATTENTE },
+        },
+      },
+    });
+  }
+
+  async getFeedbackByTaskId(taskId: number) {
+    return this.prisma.feedback.findFirst({
+      where: { taskId },
+      select: {
+        id: true,
+        content: true,
+        score: true,
+        sentiment: true,
+        category: true,
+        status: true,
+        createdAt: true,
+        taskTitle: true,
+        client: {
+          select: {
+            nomSociete: true,
+            utilisateur: { select: { prenom: true, nom: true, avatar: true } },
+          },
+        },
+      },
+    });
+  }
+
+  async resolveFeedbackByTaskId(taskId: number) {
+    return this.prisma.feedback.updateMany({
+      where: { taskId, status: FeedbackStatus.EN_COURS },
+      data: { status: FeedbackStatus.RESOLU },
+    });
+  }
+
+  async createFeedbackRequest(taskId: number, clientId: number, projectId: number, taskTitle: string, taskPriority: string) {
+    return this.prisma.feedback.create({
+      data: {
+        content: '',
+        taskTitle,
+        status: FeedbackStatus.EN_ATTENTE,
+        clientId,
+        projectId,
+        taskId,
+        taskPriority,
+        feedbackRequestedAt: new Date(),
+      },
+    });
   }
 
   async findMarketingTasksByEmployeeUserId(userId: number) {
@@ -419,5 +484,135 @@ export class TasksRepository {
         },
       },
     });
+  }
+
+  async getTimeTrackingData(utilisateurId: number) {
+    const sessions = await this.prisma.timerTask.findMany({
+      where: {
+        OR: [
+          { task: { employee: { utilisateurId } } },
+          { sprintTask: { employee: { utilisateurId } } },
+        ],
+      },
+      include: {
+        task: {
+          include: {
+            marketingProject: { include: { project: true } },
+          },
+        },
+        sprintTask: {
+          include: {
+            sprint: {
+              include: {
+                webProject: { include: { project: true } },
+              },
+            },
+          },
+        },
+      },
+      orderBy: { startTime: 'desc' },
+    });
+
+    const mapped = sessions.map((s) => {
+      const isMarketing = s.task !== null;
+      const taskTitle = isMarketing ? s.task!.titre : s.sprintTask!.titre;
+      const projectName = isMarketing
+        ? (s.task!.marketingProject?.project?.nom ?? null)
+        : (s.sprintTask!.sprint?.webProject?.project?.nom ?? null);
+      const projectType = isMarketing ? 'MARKETING' : 'SPRINT';
+      const taskId = isMarketing ? s.task!.id : s.sprintTask!.id;
+
+      const durationSeconds =
+        s.endTime !== null
+          ? Math.floor((s.endTime.getTime() - s.startTime.getTime()) / 1000)
+          : null;
+
+      return {
+        id: s.id,
+        startTime: s.startTime,
+        endTime: s.endTime,
+        durationSeconds,
+        taskTitle,
+        projectName,
+        projectType,
+        taskId,
+        type: projectType,
+        priority: isMarketing ? s.task!.priority : s.sprintTask!.priority,
+      };
+    });
+
+    const activeTimer = mapped.find((s) => s.endTime === null) ?? null;
+    const completedSessions = mapped.filter(
+      (s) => s.endTime !== null && (s.durationSeconds ?? 0) > 0,
+    );
+
+    return { sessions: mapped, completedSessions, activeTimer };
+  }
+
+  async getTimeTrackingStats(userId: number): Promise<TaskTimeStats> {
+    const [marketingAgg, sprintAgg, timerSessions, marketingGroups, sprintGroups] = await Promise.all([
+      this.prisma.task.aggregate({
+        where: { employee: { utilisateurId: userId } },
+        _sum: { estimatedHours: true },
+      }),
+      this.prisma.sprintTask.aggregate({
+        where: { employee: { utilisateurId: userId } },
+        _sum: { storyPoints: true },
+      }),
+      this.prisma.timerTask.findMany({
+        where: {
+          OR: [
+            { task: { employee: { utilisateurId: userId } } },
+            { sprintTask: { employee: { utilisateurId: userId } } },
+          ],
+          endTime: { not: null },
+        },
+        select: { startTime: true, endTime: true },
+      }),
+      this.prisma.task.groupBy({
+        by: ['status'],
+        where: { employee: { utilisateurId: userId } },
+        _count: { id: true },
+      }),
+      this.prisma.sprintTask.groupBy({
+        by: ['status'],
+        where: { employee: { utilisateurId: userId } },
+        _count: { id: true },
+      }),
+    ]);
+
+    const totalEstimatedHours = (marketingAgg._sum.estimatedHours || 0) + (sprintAgg._sum.storyPoints || 0);
+
+    const totalActualSeconds = timerSessions.reduce((acc, s) => {
+      if (s.endTime) {
+        return acc + Math.floor((s.endTime.getTime() - s.startTime.getTime()) / 1000);
+      }
+      return acc;
+    }, 0);
+
+    const counts = {
+      completed: 0,
+      inProgress: 0,
+      toDo: 0,
+    };
+
+    const processGroups = (groups: any[]) => {
+      groups.forEach(g => {
+        if (g.status === TaskStatus.TERMINE) counts.completed += g._count.id;
+        else if (g.status === TaskStatus.EN_COURS) counts.inProgress += g._count.id;
+        else if (g.status === TaskStatus.A_FAIRE) counts.toDo += g._count.id;
+      });
+    };
+
+    processGroups(marketingGroups);
+    processGroups(sprintGroups);
+
+    return {
+      totalEstimatedHours,
+      totalActualSeconds,
+      tasksCompleted: counts.completed,
+      tasksInProgress: counts.inProgress,
+      tasksToDo: counts.toDo,
+    };
   }
 }

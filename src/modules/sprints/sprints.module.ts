@@ -4,9 +4,10 @@ import { SprintsController } from './controllers/sprints.controller';
 import { SprintsService } from './services/sprints.service';
 import { SprintsRepository } from './repositories/sprints.repository';
 import { PrismaModule } from '../../prisma/prisma.module';
+import { NotificationsModule } from '../notifications/notifications.module';
 
 @Module({
-  imports: [PrismaModule],
+  imports: [PrismaModule, NotificationsModule],
   controllers: [SprintsController],
   providers: [SprintsService, SprintsRepository],
   exports: [SprintsService],

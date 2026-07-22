@@ -26,6 +26,7 @@ import { PaginationDto } from '../dto/pagination.dto';
 import { RolesGuard } from '../../../common/guards/roles.guard';
 import { Roles } from '../../../common/decorators/roles.decorator';
 import { Role } from '@prisma/client';
+import type { AuthenticatedRequest } from '../../../common/types/authenticated-request';
 
 @Controller('chat')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -34,26 +35,26 @@ export class ChatController {
 
   @Get('contacts')
   @Roles(Role.ADMIN, Role.EMPLOYEE, Role.CLIENT)
-  async getContactList(@Req() req: { user: { id: number } }) {
+  async getContactList(@Req() req: AuthenticatedRequest) {
     return this.chatService.getContactList(req.user.id);
   }
 
   @Get('conversations')
   @Roles(Role.ADMIN, Role.EMPLOYEE, Role.CLIENT)
-  async listConversations(@Req() req: { user: { id: number } }) {
+  async listConversations(@Req() req: AuthenticatedRequest) {
     return this.chatService.listConversations(req.user.id);
   }
 
   @Get('project-conversations')
   @Roles(Role.ADMIN, Role.EMPLOYEE, Role.CLIENT)
-  async listProjectConversations(@Req() req: { user: { id: number } }) {
+  async listProjectConversations(@Req() req: AuthenticatedRequest) {
     return this.chatService.listProjectConversations(req.user.id);
   }
 
   @Post('direct')
 @Roles(Role.ADMIN, Role.EMPLOYEE, Role.CLIENT)
   async getOrCreateDirectConversation(
-    @Req() req: { user: { id: number } },
+    @Req() req: AuthenticatedRequest,
     @Body() createDirectDto: CreateDirectDto,
   ) {
     return this.chatService.getOrCreateDirectConversation(
@@ -65,7 +66,7 @@ export class ChatController {
   @Get('conversations/:id/messages')
   @Roles(Role.ADMIN, Role.EMPLOYEE, Role.CLIENT)
   async listMessages(
-    @Req() req: { user: { id: number } },
+    @Req() req: AuthenticatedRequest,
     @Param('id', ParseIntPipe) conversationId: number,
     @Query() paginationDto: PaginationDto,
   ) {
@@ -80,7 +81,7 @@ export class ChatController {
   @Post('conversations/:id/messages')
   @Roles(Role.ADMIN, Role.EMPLOYEE, Role.CLIENT)
   async sendMessage(
-    @Req() req: { user: { id: number } },
+    @Req() req: AuthenticatedRequest,
     @Param('id', ParseIntPipe) conversationId: number,
     @Body() sendMessageDto: SendMessageDto,
   ) {
@@ -96,6 +97,7 @@ export class ChatController {
   }
 
   @Post('upload')
+  @Roles(Role.ADMIN, Role.EMPLOYEE, Role.CLIENT)
   @UseInterceptors(
     FileInterceptor('file', {
       storage: diskStorage({
@@ -119,7 +121,7 @@ export class ChatController {
   @Post('conversations/:id/read')
   @Roles(Role.ADMIN, Role.EMPLOYEE, Role.CLIENT)
   async markConversationRead(
-    @Req() req: { user: { id: number } },
+    @Req() req: AuthenticatedRequest,
     @Param('id', ParseIntPipe) conversationId: number,
   ) {
     return this.chatService.markConversationRead(conversationId, req.user.id);
@@ -128,7 +130,7 @@ export class ChatController {
   @Patch('messages/:id')
   @Roles(Role.ADMIN, Role.EMPLOYEE, Role.CLIENT)
   async editMessage(
-    @Req() req: { user: { id: number } },
+    @Req() req: AuthenticatedRequest,
     @Param('id', ParseIntPipe) messageId: number,
     @Body() editMessageDto: EditMessageDto,
   ) {
@@ -142,7 +144,7 @@ export class ChatController {
   @Delete('messages/:id')
   @Roles(Role.ADMIN, Role.EMPLOYEE, Role.CLIENT)
   async deleteMessage(
-    @Req() req: { user: { id: number } },
+    @Req() req: AuthenticatedRequest,
     @Param('id', ParseIntPipe) messageId: number,
   ) {
     return this.chatService.deleteMessage(messageId, req.user.id);

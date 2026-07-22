@@ -14,6 +14,7 @@ export const TASK_LIST_INCLUDE = {
   blockedByTask: { select: { id: true, titre: true } },
   marketingProject: { include: { project: true } },
   assistantIA: true,
+  feedbackRequests: { select: { id: true, status: true } },
 };
 
 export const SPRINT_TASK_DETAIL_INCLUDE = {

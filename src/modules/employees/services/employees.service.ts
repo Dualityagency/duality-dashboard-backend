@@ -17,4 +17,8 @@ export class EmployeesService {
       poste: emp.poste,
     }));
   }
+
+  async getCalendar(employeeId: number, month: number, year: number) {
+    return this.employeesRepository.getCalendar(employeeId, month, year);
+  }
 }

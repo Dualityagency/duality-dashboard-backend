@@ -4,5 +4,6 @@ export interface EmployeeListItem {
   fullname: string;
   avatar: string | null;
   email: string;
+
   poste: string;
 }

@@ -76,4 +76,20 @@ export interface PageAnalyseKPI {
   projectStatusDistribution: ProjectProgress[];
   workload: EmployeeWorkload[];
   projectGlobalProgress: ProjectProgressItem[];
+  priority: TaskPriority[];
+  projectTypes: ProjectTypeStat[];
+  hoursPerEmployee: HoursPerEmployee[];
+  detailedStats: {
+    employees: number;
+    projects: number;
+    tasks: number;
+    feedbacks: number;
+    totalHours: number;
+  };
+  feedbackAnalysis: ProjectProgress[];
 }
+
+
+
+
+

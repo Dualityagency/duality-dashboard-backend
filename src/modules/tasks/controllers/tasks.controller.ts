@@ -6,6 +6,7 @@ import {
   Delete,
   Param,
   Body,
+  Query,
   UseGuards,
   Req,
   ParseIntPipe,
@@ -25,12 +26,14 @@ import { JwtAuthGuard } from '../../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../../common/guards/roles.guard';
 import { Roles } from '../../../common/decorators/roles.decorator';
 import { Role } from '@prisma/client';
+import type { AuthenticatedRequest } from '../../../common/types/authenticated-request';
 import { StartTimerDto, TaskType } from '../dto/start-timer.dto';
 import { CreateTaskDto } from '../dto/create-task.dto';
 import { UpdateTaskDto } from '../dto/update-task.dto';
 import { UpdateSprintTaskDto } from '../dto/update-sprint-task.dto';
 import { CreateSprintTaskDto } from '../dto/create-sprint-task.dto';
 import { AskAiDto } from '../dto/ask-ai.dto';
+import { GetTasksDto } from '../dto/get-tasks.dto';
 import { BadRequestException } from '@nestjs/common';
 
 @Controller('tasks')
@@ -42,13 +45,21 @@ export class TasksController {
   // ── Static GET routes ──────────────────────────────────────────────────────
 
   @Get()
-  async getTasks(@Req() req: { user: { id: number } }) {
-    return this.tasksService.getTasks(req.user.id);
+  async getTasks(
+    @Req() req: AuthenticatedRequest,
+    @Query() query: GetTasksDto,
+  ) {
+    return this.tasksService.getTasks(req.user.id, query);
   }
 
   @Get('projects')
-  async getProjects(@Req() req: { user: { id: number } }) {
+  async getProjects(@Req() req: AuthenticatedRequest) {
     return this.tasksService.getProjectsForEmployee(req.user.id);
+  }
+
+  @Get('time-tracking')
+  async getTimeTracking(@Req() req: AuthenticatedRequest) {
+    return this.tasksService.getTimeTrackingStats(req.user.id);
   }
 
   @Get('download/:filename')
@@ -82,7 +93,7 @@ export class TasksController {
   @Get('projects/:id/members')
   async getProjectMembers(
     @Param('id', ParseIntPipe) id: number,
-    @Req() req: { user: { id: number } },
+    @Req() req: AuthenticatedRequest,
   ) {
     return this.tasksService.getTeamMembersForProject(id, req.user.id);
   }
@@ -91,7 +102,7 @@ export class TasksController {
 
   @Post()
   async createTask(
-    @Req() req: { user: { id: number } },
+    @Req() req: AuthenticatedRequest,
     @Body() dto: CreateTaskDto,
   ) {
     return this.tasksService.createTask(dto, req.user.id);
@@ -99,7 +110,7 @@ export class TasksController {
 
   @Post('ai/ask')
   async askAI(
-    @Req() req: { user: { id: number } },
+    @Req() req: AuthenticatedRequest,
     @Body() dto: AskAiDto,
   ) {
     return this.tasksService.askAI(dto, req.user.id);
@@ -107,7 +118,7 @@ export class TasksController {
 
   @Post('sprint')
   async createSprintTask(
-    @Req() req: { user: { id: number } },
+    @Req() req: AuthenticatedRequest,
     @Body() dto: CreateSprintTaskDto,
   ) {
     return this.tasksService.createSprintTask(dto, req.user.id);
@@ -140,7 +151,7 @@ export class TasksController {
   )
   async uploadFile(
     @UploadedFile() file: Express.Multer.File,
-    @Req() req: { user: { id: number } },
+    @Req() req: AuthenticatedRequest,
     @Body('taskId') taskId?: string,
   ) {
     if (!file) {
@@ -182,7 +193,7 @@ export class TasksController {
     }),
   )
   async uploadSprintFile(
-    @Req() req: { user: { id: number; role?: string } },
+    @Req() req: AuthenticatedRequest,
     @Param('id', ParseIntPipe) sprintTaskId: number,
     @UploadedFile() file: Express.Multer.File,
   ) {
@@ -203,7 +214,7 @@ export class TasksController {
 
   @Post(':id/start')
   async startTimer(
-    @Req() req: { user: { id: number } },
+    @Req() req: AuthenticatedRequest,
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: StartTimerDto,
   ) {
@@ -212,18 +223,41 @@ export class TasksController {
 
   @Post(':id/stop')
   async stopTimer(
-    @Req() req: { user: { id: number } },
+    @Req() req: AuthenticatedRequest,
     @Param('id', ParseIntPipe) taskId: number,
     @Body() dto: StartTimerDto,
   ) {
     return this.tasksService.stopTimer(taskId, dto.type, req.user.id);
   }
 
+  @Get(':id/feedback')
+  async getTaskFeedback(
+    @Param('id', ParseIntPipe) taskId: number,
+  ) {
+    return this.tasksService.getTaskFeedback(taskId);
+  }
+
+  @Post(':id/request-feedback')
+  async requestFeedback(
+    @Req() req: AuthenticatedRequest,
+    @Param('id', ParseIntPipe) taskId: number,
+  ) {
+    return this.tasksService.requestFeedback(taskId, req.user.id);
+  }
+
+  @Patch(':id/feedback/resolve')
+  async resolveFeedback(
+    @Req() req: AuthenticatedRequest,
+    @Param('id', ParseIntPipe) taskId: number,
+  ) {
+    return this.tasksService.resolveFeedback(taskId, req.user.id);
+  }
+
   // ── PATCH routes ───────────────────────────────────────────────────────────
 
   @Patch('sprint/:id')
   async updateSprintTask(
-    @Req() req: { user: { id: number; role?: string } },
+    @Req() req: AuthenticatedRequest,
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: UpdateSprintTaskDto,
   ) {
@@ -232,7 +266,7 @@ export class TasksController {
 
   @Patch(':id')
   async updateTask(
-    @Req() req: { user: { id: number; role?: string } },
+    @Req() req: AuthenticatedRequest,
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: UpdateTaskDto,
   ) {
@@ -244,7 +278,7 @@ export class TasksController {
   @Delete('sprint/:id')
   @HttpCode(HttpStatus.OK)
   async deleteSprintTask(
-    @Req() req: { user: { id: number; role?: string } },
+    @Req() req: AuthenticatedRequest,
     @Param('id', ParseIntPipe) id: number,
   ) {
     return this.tasksService.deleteSprintTask(id, req.user.id, req.user.role);
@@ -253,7 +287,7 @@ export class TasksController {
   @Delete(':id')
   @HttpCode(HttpStatus.OK)
   async deleteTask(
-    @Req() req: { user: { id: number } },
+    @Req() req: AuthenticatedRequest,
     @Param('id', ParseIntPipe) id: number,
   ) {
     return this.tasksService.deleteTask(id, req.user.id);

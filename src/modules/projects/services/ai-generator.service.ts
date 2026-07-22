@@ -8,6 +8,8 @@ import { PrismaService } from '../../../prisma/prisma.service';
 import { ConfigService } from '@nestjs/config';
 import Groq from 'groq-sdk';
 import { EmployeesService } from '../../employees/services/employees.service';
+import { NotificationsService } from '../../notifications/notifications.service';
+import { NotificationType } from '@prisma/client';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -35,6 +37,7 @@ export class AIGeneratorService {
     private prisma: PrismaService,
     private configService: ConfigService,
     private employeesService: EmployeesService,
+    private notificationsService: NotificationsService,
   ) {
     const apiKey =
       this.configService.get<string>('GROQ_API_KEY') ||
@@ -107,7 +110,7 @@ export class AIGeneratorService {
     return fileBuffer.toString('utf-8');
   }
 
-  async generateSprints(projectId: number) {
+  async generateSprints(projectId: number, requesterId?: number) {
     if (!this.groq) {
       throw new InternalServerErrorException(
         'Clé API Groq manquante. Configurez GROQ_API_KEY dans votre fichier .env.',
@@ -304,6 +307,19 @@ Tu dois générer au moins 3 à 5 tâches par sprint !
       }
 
       console.log(`[AI] ${createdSprints.length} sprint(s) créé(s) avec succès.`);
+
+      // Notify requester
+      if (requesterId) {
+        this.notificationsService.createNotification(
+          requesterId,
+          NotificationType.PROJECT_AI_SPRINTS,
+          'Sprints IA générés',
+          `${createdSprints.length} sprint(s) ont été générés automatiquement pour le projet "${project.nom}".`,
+          projectId,
+          'Project',
+        ).catch(() => {});
+      }
+
       return {
         message: `${createdSprints.length} sprint(s) générés avec succès.`,
         total: createdSprints.length,

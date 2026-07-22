@@ -1,4 +1,5 @@
 import { Controller, Get, Post, Body, UseGuards, Query, Delete, Param, Patch, UseInterceptors, UploadedFile, ParseIntPipe, BadRequestException } from '@nestjs/common';
+import { GetUser } from '../../../common/decorators/get-user.decorator';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { diskStorage } from 'multer';
 import { extname } from 'path';
@@ -20,15 +21,15 @@ export class ProjectsController {
   @Post()
   @Roles(Role.ADMIN)
   @UseGuards(JwtAuthGuard, RolesGuard)
-  async create(@Body() createProjectDto: CreateProjectDto) {
-    return this.projectsService.create(createProjectDto);
+  async create(@Body() createProjectDto: CreateProjectDto, @GetUser('id') creatorId: number) {
+    return this.projectsService.create(createProjectDto, creatorId);
   }
 
-  @Get(':id')
-  @Roles(Role.ADMIN, Role.EMPLOYEE)
+  @Get(':id/marketing-details')
+  @Roles(Role.ADMIN, Role.EMPLOYEE, Role.CLIENT)
   @UseGuards(JwtAuthGuard, RolesGuard)
-  async findOne(@Param('id') id: string) {
-    return this.projectsService.findOne(Number(id));
+  async getMarketingProjectDetails(@Param('id') id: string) {
+    return this.projectsService.getMarketingProjectDetails(Number(id));
   }
 
   @Get(':id/web-details')
@@ -36,6 +37,13 @@ export class ProjectsController {
   @UseGuards(JwtAuthGuard, RolesGuard)
   async getWebProjectDetails(@Param('id') id: string) {
     return this.projectsService.getWebProjectDetails(Number(id));
+  }
+
+  @Get(':id')
+  @Roles(Role.ADMIN, Role.EMPLOYEE)
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  async findOne(@Param('id') id: string) {
+    return this.projectsService.findOne(Number(id));
   }
 
   @Patch(':id')
@@ -46,14 +54,24 @@ export class ProjectsController {
   }
 
   @Get()
-  @Roles(Role.ADMIN, Role.EMPLOYEE)
+  @Roles(Role.ADMIN, Role.EMPLOYEE, Role.CLIENT)
   @UseGuards(JwtAuthGuard, RolesGuard)
   async findAll(
+    @GetUser() user: any,
     @Query('page') page: string = '1',
     @Query('limit') limit: string = '10',
     @Query('search') search?: string
   ) {
-    return this.projectsService.findAll(Number(page), Number(limit), search);
+    let employeeId: number | undefined;
+    let clientId: number | undefined;
+
+    if (user.role === Role.EMPLOYEE && user.employee) {
+      employeeId = user.employee.id;
+    } else if (user.role === Role.CLIENT && user.client) {
+      clientId = user.client.id;
+    }
+
+    return this.projectsService.findAll(Number(page), Number(limit), search, employeeId, clientId);
   }
 
   @Delete(':id')
@@ -90,6 +108,23 @@ export class ProjectsController {
     }
     const cdcUrl = `/uploads/cahier-des-charges/${file.filename}`;
     return this.projectsService.updateCahierDesCharges(id, cdcUrl);
+  }
+
+  @Get('employee/:employeeId')
+  @Roles(Role.ADMIN, Role.EMPLOYEE)
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  async getByEmployee(@Param('employeeId', ParseIntPipe) employeeId: number) {
+    return this.projectsService.findByEmployeeId(employeeId);
+  }
+
+  @Get('admin/calendar')
+  @Roles(Role.ADMIN)
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  async getAdminCalendar(
+    @Query('month', ParseIntPipe) month: number,
+    @Query('year', ParseIntPipe) year: number,
+  ) {
+    return this.projectsService.getAdminCalendar(month, year);
   }
 
   @Post(':id/generate-ai-sprints')

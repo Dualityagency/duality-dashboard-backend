@@ -112,6 +112,7 @@ export function mapTaskToFrontend(task: Prisma.TaskGetPayload<{ include: typeof 
     feedbacks: feedbacks > 0 ? `${feedbacks} Feedback${feedbacks > 1 ? 's' : ''}` : undefined,
     tags: task.tags || [],
     timerTask: resolvedTimerTask,
+    timerTasks: timerTasks,
     deadline: task.dateFin ? task.dateFin.toISOString().split('T')[0] : undefined,
     status: task.status,
     attachments,
@@ -124,6 +125,8 @@ export function mapTaskToFrontend(task: Prisma.TaskGetPayload<{ include: typeof 
     }] : [], 
     blockedBy: task.blockedByTask?.titre,
     aiSuggestions: task.assistantIA || undefined,
+    feedbackRequested: (task as any).feedbackRequests?.some((f: any) => f.status === 'EN_ATTENTE' || f.status === 'EN_COURS'),
+    feedbackResolved: (task as any).feedbackRequests?.some((f: any) => f.status === 'RESOLU'),
   };
 }
 
@@ -164,6 +167,7 @@ export function mapSprintTaskToFrontend(task: Prisma.SprintTaskGetPayload<{ incl
     isOverdue,
     files: (task as any).files?.length > 0 ? `${(task as any).files.length} Fichier${(task as any).files.length > 1 ? 's' : ''}` : undefined,
     timerTask: resolvedTimerTask,
+    timerTasks: timerTasks,
     deadline: task.dateFin ? task.dateFin.toISOString().split('T')[0] : undefined,
     status: task.status,
     attachments,

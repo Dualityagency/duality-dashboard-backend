@@ -78,6 +78,7 @@ export class UsersRepository {
   async findById(id: number) {
     return this.prisma.utilisateur.findUnique({
       where: { id },
+      omit: { password: true },
       include: {
         client: true,
         employee: true,
@@ -86,13 +87,21 @@ export class UsersRepository {
     });
   }
 
+  async findPasswordById(id: number): Promise<string | null> {
+    const user = await this.prisma.utilisateur.findUnique({
+      where: { id },
+      select: { password: true },
+    });
+    return user?.password ?? null;
+  }
+
   async delete(id: number): Promise<Utilisateur> {
     return this.prisma.utilisateur.delete({
       where: { id },
     });
   }
 
-  async update(id: number, data: any): Promise<Utilisateur> {
+  async update(id: number, data: any): Promise<Omit<Utilisateur, 'password'> & { client: Client | null; employee: Employee | null; admin: Admin | null }> {
     const { client, employee, ...userData } = data;
 
     // On prépare l'update atomique avec Prisma
@@ -111,6 +120,7 @@ export class UsersRepository {
           },
         }),
       },
+      omit: { password: true },
       include: {
         client: true,
         employee: true,
@@ -123,6 +133,20 @@ export class UsersRepository {
     return this.prisma.utilisateur.update({
       where: { id },
       data: { avatar: avatarPath }
+    });
+  }
+
+  async updatePassword(id: number, hashedPassword: string): Promise<void> {
+    await this.prisma.utilisateur.update({
+      where: { id },
+      data: { password: hashedPassword },
+    });
+  }
+
+  async updatePreferences(id: number, preferences: Record<string, any>): Promise<void> {
+    await this.prisma.utilisateur.update({
+      where: { id },
+      data: { preferences },
     });
   }
 

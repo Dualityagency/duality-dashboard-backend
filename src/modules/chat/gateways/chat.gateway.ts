@@ -90,17 +90,14 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
   private extractToken(client: Socket): string | null {
     const authHeader = client.handshake.headers.authorization;
-    if (authHeader && authHeader.startsWith('Bearer ')) {
-      return authHeader.split(' ')[1];
-    }
+    if (authHeader?.startsWith('Bearer ')) return authHeader.split(' ')[1];
     const authToken = client.handshake.auth?.token;
-    if (authToken) {
-      return authToken;
-    }
+    if (authToken) return authToken;
     const queryToken = client.handshake.query?.token as string;
-    if (queryToken) {
-      return queryToken;
-    }
+    if (queryToken) return queryToken;
+    const cookieHeader = client.handshake.headers.cookie || '';
+    const match = cookieHeader.match(/(?:^|;\s*)access_token=([^;]+)/);
+    if (match) return decodeURIComponent(match[1]);
     return null;
   }
 
