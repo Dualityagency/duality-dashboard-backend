@@ -14,4 +14,8 @@ export class ClientsService {
       fullname: `${client.utilisateur.prenom} ${client.utilisateur.nom}`,
     }));
   }
+
+  async getCalendar(clientId: number, month: number, year: number) {
+    return this.clientsRepository.getCalendar(clientId, month, year);
+  }
 }
