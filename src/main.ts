@@ -69,8 +69,8 @@ async function bootstrap() {
   app.setGlobalPrefix('api');
 
   // Lancement du serveur sur le port 3001
-  await app.listen(3001);
-  console.log('🚀 Server running on http://localhost:3001/api');
+  await app.listen(process.env.PORT || 4002);
+  console.log('🚀 Server running on http://localhost:4002/api');
 }
 
 // Lancement du processus bootstrap
